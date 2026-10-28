@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>PH WORK — Play Dead Signal</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#101611;color:#edeede;font:16px/1.6 system-ui,sans-serif;padding:28px}main{width:min(540px,100%);border-top:2px solid #e5ed91;padding-top:24px}.brand{color:#e5ed91;font:700 13px monospace;letter-spacing:.3em}h1{font-size:clamp(40px,10vw,64px);line-height:1;letter-spacing:-.055em;margin:22px 0}p{color:#bcc6bb}.activity{display:flex;align-items:center;gap:12px;min-height:48px}.spinner{width:20px;height:20px;border:2px solid #505641;border-top-color:#e5ed91;border-radius:50%;animation:spin .9s linear infinite}a,button{display:inline-block;padding:12px 20px;background:#e5ed91;color:#11170c;font:700 14px system-ui;text-decoration:none;border:0;cursor:pointer}small{display:block;color:#899287;margin-top:32px}footer{margin-top:48px;border-top:1px solid #394236;padding-top:16px;font-size:13px;color:#899287}[hidden]{display:none!important}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">PH WORK</div>
+    <h1>DEAD SIGNAL</h1>
+    <p>Your permanent launch link.</p>
+    <div class="activity" role="status"><span id="spinner" class="spinner" aria-hidden="true"></span><span id="status">Finding the Mac-hosted game…</span></div>
+    <a id="play" hidden>OPEN GAME</a>
+    <button id="retry" hidden>TRY AGAIN</button>
+    <small id="detail">The game runs on the owner's Mac. No VPN is required.</small>
+    <footer>Keep this link for future visits. The game address changes automatically when its tunnel restarts.</footer>
+  </main>
+  <noscript>Enable JavaScript to find the current game address.</noscript>
+  <script>
+    const status = document.getElementById('status');
+    const spinner = document.getElementById('spinner');
+    const play = document.getElementById('play');
+    const retry = document.getElementById('retry');
+    const detail = document.getElementById('detail');
+    retry.addEventListener('click', () => location.reload());
+    (async () => {
+      try {
+        const response = await fetch(`./target.json?t=${Date.now()}`, {cache:'no-store',signal:AbortSignal.timeout(15000)});
+        if (!response.ok) throw new Error('The current game address is temporarily unavailable.');
+        const target = await response.json();
+        if (target.schema !== 1 || !['online','offline'].includes(target.status)) throw new Error('The game address could not be verified.');
+        if (target.status === 'offline') {
+          status.textContent = 'The Mac-hosted game is offline.';
+          detail.textContent = 'Ask the owner to turn on the Mac and start public hosting, then try this same link again.';
+          retry.hidden = false; spinner.hidden = true; return;
+        }
+        const url = new URL(target.url);
+        if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('The game address could not be verified.');
+        const room = new URL(location.href).searchParams.get('room')?.toUpperCase();
+        if (room && /^[A-HJ-NP-Z2-9]{6}$/.test(room)) url.searchParams.set('room',room);
+        play.href = url.href; play.hidden = false;
+        status.textContent = 'Opening the Mac-hosted game…';
+        detail.textContent = 'If the game does not open, select OPEN GAME. The Mac must stay online.';
+        location.replace(url.href);
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not find the game.';
+        retry.hidden = false; spinner.hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>
