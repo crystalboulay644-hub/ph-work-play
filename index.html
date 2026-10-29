@@ -15,12 +15,12 @@
   <main>
     <div class="brand">PH WORK</div>
     <h1>DEAD SIGNAL</h1>
-    <p>Your permanent launch link.</p>
+    <p>Your permanent launch link. Save this page, rather than the temporary game address.</p>
     <div class="activity" role="status"><span id="spinner" class="spinner" aria-hidden="true"></span><span id="status">Finding the Mac-hosted game…</span></div>
     <a id="play" hidden>OPEN GAME</a>
     <button id="retry" hidden>TRY AGAIN</button>
     <small id="detail">The game runs on the owner's Mac. No VPN is required.</small>
-    <footer>Keep this link for future visits. The game address changes automatically when its tunnel restarts.</footer>
+    <footer>Automatic recovery checks for the latest game address every 15 seconds while this page is open. The Mac checks its tunnel every minute.</footer>
   </main>
   <noscript>Enable JavaScript to find the current game address.</noscript>
   <script>
@@ -29,31 +29,75 @@
     const play = document.getElementById('play');
     const retry = document.getElementById('retry');
     const detail = document.getElementById('detail');
-    retry.addEventListener('click', () => location.reload());
-    (async () => {
+    let busy = false;
+    let timer;
+    let attempts = 0;
+    function gameURL(value) {
+      if (typeof value !== 'string') throw new Error('The game address could not be verified.');
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('The game address could not be verified.');
+      return url;
+    }
+    // A cross-origin image checks this visitor's real DNS/TLS/HTTP path without
+    // a server-side DNS workaround or access to any game/session data.
+    function reachable(url) {
+      return new Promise(resolve => {
+        const probe = new Image();
+        const timeout = setTimeout(() => finish(false), 8000);
+        function finish(ok) {
+          clearTimeout(timeout); probe.onload = null; probe.onerror = null;
+          if (!ok) probe.src = '';
+          resolve(ok);
+        }
+        probe.onload = () => finish(probe.naturalWidth > 0);
+        probe.onerror = () => finish(false);
+        probe.referrerPolicy = 'no-referrer';
+        probe.src = new URL(`/icon.svg?launch=${Date.now()}`, url).href;
+      });
+    }
+    async function check() {
+      if (busy) return;
+      busy = true; attempts++; clearTimeout(timer);
+      play.hidden = true; retry.hidden = true; spinner.hidden = false;
+      status.textContent = 'Finding the current game address…';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
       try {
-        const response = await fetch(`./target.json?t=${Date.now()}`, {cache:'no-store',signal:AbortSignal.timeout(15000)});
+        const response = await fetch(`./target.json?t=${Date.now()}`, {cache:'no-store',signal:controller.signal});
         if (!response.ok) throw new Error('The current game address is temporarily unavailable.');
         const target = await response.json();
         if (target.schema !== 1 || !['online','offline'].includes(target.status)) throw new Error('The game address could not be verified.');
         if (target.status === 'offline') {
           status.textContent = 'The Mac-hosted game is offline.';
-          detail.textContent = 'Ask the owner to turn on the Mac and start public hosting, then try this same link again.';
-          retry.hidden = false; spinner.hidden = true; return;
+          detail.textContent = 'Waiting for the owner’s Mac to reconnect. Checking again in 15 seconds.';
+          return;
         }
-        const url = new URL(target.url);
-        if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('The game address could not be verified.');
+        const url = gameURL(target.url);
+        status.textContent = 'Checking the game connection from your browser…';
+        if (!await reachable(url)) {
+          status.textContent = 'Your browser cannot reach the game address yet.';
+          detail.textContent = `Check ${attempts}: ${url.hostname}. Retrying automatically in 15 seconds. If this persists on Android, try Chrome on mobile data instead of Wi-Fi, and report any error shown by OPEN GAME.`;
+          play.href = url.href; play.hidden = false;
+          return;
+        }
         const room = new URL(location.href).searchParams.get('room')?.toUpperCase();
         if (room && /^[A-HJ-NP-Z2-9]{6}$/.test(room)) url.searchParams.set('room',room);
         play.href = url.href; play.hidden = false;
         status.textContent = 'Opening the Mac-hosted game…';
-        detail.textContent = 'If the game does not open, select OPEN GAME. The Mac must stay online.';
-        location.replace(url.href);
+        detail.textContent = 'Connection checked. Original game resources may take time to load. Use Back to return here if the connection stops.';
+        location.assign(url.href);
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not find the game.';
+        detail.textContent = 'This page will check again in 15 seconds. Keep this permanent link for future visits.';
+      } finally {
+        clearTimeout(timeout); busy = false;
         retry.hidden = false; spinner.hidden = true;
+        timer = setTimeout(check, 15000);
       }
-    })();
+    }
+    retry.addEventListener('click', check);
+    window.addEventListener('online', check);
+    check();
   </script>
 </body>
 </html>
