@@ -16,10 +16,13 @@ if not re.fullmatch('[a-f0-9]{64}', expected):
 root = pathlib.Path('site')
 root.mkdir(exist_ok=True)
 
-def get(path, target):
-    subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location',
+def get(path, target, byte_range=None):
+    command = ['curl', '--fail', '--silent', '--show-error', '--location',
                     '--retry', '4', '--retry-all-errors', '--connect-timeout', '15',
-                    '--max-time', '240', source + path, '--output', str(target)], check=True)
+                    '--max-time', '150', source + path, '--output', str(target)]
+    if byte_range is not None:
+        command += ['--range', f'{byte_range[0]}-{byte_range[1]}']
+    subprocess.run(command, check=True)
 
 with tempfile.TemporaryDirectory() as temporary:
     manifest = pathlib.Path(temporary) / 'release.json'
@@ -41,7 +44,20 @@ with tempfile.TemporaryDirectory() as temporary:
         target = root / row['path']
         target.parent.mkdir(parents=True, exist_ok=True)
         for attempt in range(3):
-            get(row['path'], target)
+            if row['bytes'] > 8 * 1024 * 1024:
+                with target.open('wb') as output:
+                    for offset in range(0, row['bytes'], 8 * 1024 * 1024):
+                        end = min(row['bytes'], offset + 8 * 1024 * 1024) - 1
+                        part = target.with_suffix(target.suffix + '.part')
+                        get(row['path'], part, (offset, end))
+                        chunk = part.read_bytes()
+                        if len(chunk) != end - offset + 1:
+                            raise ValueError('Unexpected range length: ' + row['path'])
+                        output.write(chunk)
+                        part.unlink()
+                        print(f"range {row['path']} {offset}-{end} verified", flush=True)
+            else:
+                get(row['path'], target)
             value = target.read_bytes()
             if len(value) == row['bytes'] and hashlib.sha256(value).hexdigest() == row['sha256']:
                 return row['path']
