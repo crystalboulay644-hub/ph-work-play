@@ -1,0 +1,38 @@
+name: Publish Classic Survival
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        required: true
+        type: string
+      sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: classic-pages-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Download and verify exact Classic assets
+        env:
+          RELEASE_SOURCE: ${{ inputs.source }}
+          RELEASE_SHA: ${{ inputs.sha256 }}
+        run: python3 .github/scripts/download-classic-release.py "$RELEASE_SOURCE" "$RELEASE_SHA"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v4
