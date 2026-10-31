@@ -9,7 +9,7 @@ import sys
 import tempfile
 
 source, expected = sys.argv[1:]
-if not re.fullmatch(r'https://[a-z0-9-]+\.trycloudflare\.com/releases/classic-v21-[a-f0-9]{12}/', source):
+if not re.fullmatch(r'https://[a-z0-9-]+\.trycloudflare\.com/releases/classic-v(?:21|22)-[a-f0-9]{12}/', source):
     raise ValueError('Invalid release source')
 if not re.fullmatch('[a-f0-9]{64}', expected):
     raise ValueError('Invalid manifest checksum')
@@ -43,6 +43,10 @@ with tempfile.TemporaryDirectory() as temporary:
     def download(row):
         target = root / row['path']
         target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file() and not target.is_symlink():
+            value = target.read_bytes()
+            if len(value) == row['bytes'] and hashlib.sha256(value).hexdigest() == row['sha256']:
+                return 'reused ' + row['path']
         for attempt in range(3):
             if row['bytes'] > 8 * 1024 * 1024:
                 with target.open('wb') as output:
@@ -66,3 +70,6 @@ with tempfile.TemporaryDirectory() as temporary:
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         for index, path in enumerate(executor.map(download, rows), 1):
             print(f'{index}/{len(rows)} verified {path}', flush=True)
+    for path in root.rglob('*'):
+        if path.is_file() and path.relative_to(root).as_posix() not in seen:
+            path.unlink()
