@@ -8,8 +8,13 @@ on:
       sha256:
         required: true
         type: string
+      base_run:
+        description: Optional previous successful Pages artifact to reuse after checksum verification
+        required: false
+        type: string
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 concurrency:
@@ -25,6 +30,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Restore previous verified site
+        if: inputs.base_run != ''
+        id: previous
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: .previous
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.base_run }}
+      - name: Unpack previous site
+        if: steps.previous.outcome == 'success'
+        run: mkdir -p site && tar -xf .previous/artifact.tar -C site
       - name: Download and verify exact Classic assets
         env:
           RELEASE_SOURCE: ${{ inputs.source }}
