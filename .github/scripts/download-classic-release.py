@@ -9,7 +9,7 @@ import sys
 import tempfile
 
 source, expected = sys.argv[1:]
-if not re.fullmatch(r'https://[a-z0-9-]+\.trycloudflare\.com/releases/classic-v(?:21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41)-[a-f0-9]{12}/', source):
+if not re.fullmatch(r'https://[a-z0-9-]+\.trycloudflare\.com/releases/classic-v(?:21|22|23|24|25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40|41|42)-[a-f0-9]{12}/', source):
     raise ValueError('Invalid release source')
 if not re.fullmatch('[a-f0-9]{64}', expected):
     raise ValueError('Invalid manifest checksum')
