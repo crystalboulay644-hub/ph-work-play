@@ -18,7 +18,7 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: classic-pages-release
+  group: classic-pages-release-v44
   cancel-in-progress: false
 jobs:
   publish:
