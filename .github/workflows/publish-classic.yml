@@ -49,8 +49,51 @@ jobs:
           RELEASE_SHA: ${{ inputs.sha256 }}
         run: python3 .github/scripts/download-classic-release.py "$RELEASE_SOURCE" "$RELEASE_SHA"
       - uses: actions/upload-pages-artifact@v3
+        id: uploaded_pages
         with:
           path: site
+      - name: Wait for verified Pages artifact visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGES_ARTIFACT_ID: ${{ steps.uploaded_pages.outputs.artifact_id }}
+          PAGES_RUN_ID: ${{ github.run_id }}
+          PAGES_REPOSITORY: ${{ github.repository }}
+          PAGES_API: ${{ github.api_url }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.error, urllib.request
+          expected = int(os.environ['PAGES_ARTIFACT_ID'])
+          run_id = int(os.environ['PAGES_RUN_ID'])
+          assert expected > 0 and run_id > 0
+          url = (os.environ['PAGES_API'] + '/repos/' + os.environ['PAGES_REPOSITORY']
+                 + '/actions/runs/' + str(run_id) + '/artifacts?per_page=100')
+          deadline, visible = time.monotonic() + 120, 0
+          while time.monotonic() < deadline:
+              request = urllib.request.Request(url, headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN']})
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      artifacts = json.load(response)['artifacts']
+              except urllib.error.HTTPError as error:
+                  if error.code not in (429, 500, 502, 503, 504):
+                      raise RuntimeError('Artifact lookup HTTP ' + str(error.code)) from None
+                  visible = 0
+              except (TimeoutError, urllib.error.URLError):
+                  visible = 0
+              else:
+                  matching = [artifact for artifact in artifacts
+                              if artifact['id'] == expected and artifact['name'] == 'github-pages'
+                              and not artifact['expired'] and artifact['size_in_bytes'] > 0
+                              and artifact['workflow_run']['id'] == run_id]
+                  visible = visible + 1 if len(matching) == 1 else 0
+                  if visible >= 2:
+                      print('Verified Pages artifact', expected, 'visible on two consecutive checks')
+                      break
+              time.sleep(5)
+          else:
+              raise RuntimeError('Uploaded Pages artifact did not become consistently visible within 120 seconds')
+          PY
       - name: Publish
         id: deployment
         uses: actions/deploy-pages@v4
